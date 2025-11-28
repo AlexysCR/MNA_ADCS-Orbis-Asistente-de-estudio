@@ -1,0 +1,124 @@
+/**
+ * @fileoverview Firestore Security Rules for VoiceNote application.
+ *
+ * Core Philosophy:
+ * This ruleset enforces a strict user-ownership model where each user can only access their own data.
+ *
+ * Data Structure:
+ * All data is nested under /users/{userId}, with subcollections for voiceNotes and topicClusters.
+ * - /users/{userId} : User profile data.
+ * - /users/{userId}/voiceNotes/{voiceNoteId} : Voice notes for a specific user.
+ * - /users/{userId}/topicClusters/{topicClusterId} : Topic clusters for a specific user.
+ *
+ * Key Security Decisions:
+ * - Users can only create, read, update, and delete their own data.
+ * - Data consistency between the path and the document's internal userId field is enforced on create and update.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @description Protects the User collection, ensuring only the user themselves can read and write their profile.
+     * @path /users/{userId}
+     * @allow (create) User with id 'user123' can create their profile.
+     *   - request.auth.uid: 'user123'
+     *   - request.resource.data.id: 'user123'
+     * @allow (get) User with id 'user123' can read their profile.
+     *   - request.auth.uid: 'user123'
+     * @allow (update) User with id 'user123' can update their profile.
+     *   - request.auth.uid: 'user123'
+     *   - request.resource.data.id: 'user123' (must match existing)
+     * @allow (delete) User with id 'user123' can delete their profile.
+     *   - request.auth.uid: 'user123'
+     * @deny (create) User with id 'user456' attempts to create a profile for 'user123'.
+     *   - request.auth.uid: 'user456'
+     *   - request.resource.data.id: 'user123'
+     * @deny (get) User with id 'user456' attempts to read the profile of 'user123'.
+     *   - request.auth.uid: 'user456'
+     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.  Validates relational integrity between documents.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId) && request.resource.data.id == request.auth.uid;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Protects the VoiceNote subcollection, ensuring only the owning user can manage their voice notes.
+     * @path /users/{userId}/voiceNotes/{voiceNoteId}
+     * @allow (create) User with id 'user123' can create a voice note under their profile.
+     *   - request.auth.uid: 'user123'
+     *   - userId: 'user123' (from path)
+     * @allow (get) User with id 'user123' can read a voice note under their profile.
+     *   - request.auth.uid: 'user123'
+     *   - userId: 'user123' (from path)
+     * @allow (list) User with id 'user123' can list voice notes under their profile.
+     *   - request.auth.uid: 'user123'
+     *   - userId: 'user123' (from path)
+     * @allow (update) User with id 'user123' can update a voice note under their profile.
+     *   - request.auth.uid: 'user123'
+     *   - userId: 'user123' (from path)
+     * @allow (delete) User with id 'user123' can delete a voice note under their profile.
+     *   - request.auth.uid: 'user123'
+     *   - userId: 'user123' (from path)
+     * @deny (create) User with id 'user456' attempts to create a voice note under 'user123's profile.
+     *   - request.auth.uid: 'user456'
+     *   - userId: 'user123' (from path)
+     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
+     */
+    match /users/{userId}/voiceNotes/{voiceNoteId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Protects the TopicCluster subcollection, ensuring only the owning user can manage their topic clusters.
+     * @path /users/{userId}/topicClusters/{topicClusterId}
+     * @allow (create) User with id 'user123' can create a topic cluster under their profile.
+     *   - request.auth.uid: 'user123'
+     *   - userId: 'user123' (from path)
+     * @allow (get) User with id 'user123' can read a topic cluster under their profile.
+     *   - request.auth.uid: 'user123'
+     *   - userId: 'user123' (from path)
+     * @allow (list) User with id 'user123' can list topic clusters under their profile.
+     *   - request.auth.uid: 'user123'
+     *   - userId: 'user123' (from path)
+     * @allow (update) User with id 'user123' can update a topic cluster under their profile.
+     *   - request.auth.uid: 'user123'
+     *   - userId: 'user123' (from path)
+     * @allow (delete) User with id 'user123' can delete a topic cluster under their profile.
+     *   - request.auth.uid: 'user123'
+     *   - userId: 'user123' (from path)
+     * @deny (create) User with id 'user456' attempts to create a topic cluster under 'user123's profile.
+     *   - request.auth.uid: 'user456'
+     *   - userId: 'user123' (from path)
+     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
+     */
+    match /users/{userId}/topicClusters/{topicClusterId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
+    }
+  }
+
+  // Helper functions
+  function isSignedIn() {
+    return request.auth != null;
+  }
+
+  function isOwner(userId) {
+    return isSignedIn() && request.auth.uid == userId;
+  }
+
+  function isExistingOwner(userId) {
+    return isOwner(userId) && resource != null;
+  }
+}
